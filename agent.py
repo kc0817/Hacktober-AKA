@@ -10,7 +10,7 @@ from flask import Flask, jsonify, render_template_string, request
 from werkzeug.serving import make_server
 
 from app.assistant import Assistant
-from app.capture import WindowCapturer
+from app.capture import WindowCapturer, own_window_in_front
 from app.config import CONFIG
 from app.storage import LocalStore, SnowflakeStore
 
@@ -196,7 +196,7 @@ PAGE_TEMPLATE = """
             <p>Screen-aware help from Claude</p>
         </header>
         <main>
-            <p class="notice">When enabled, this app screenshots the window you are working in at your chosen interval (while this app is focused, it captures the last window you used instead). {{ storage_notice }} When you ask a question, your latest screenshot and the question are sent to Claude (Anthropic) to answer it. Start only on a device and screen you are authorized to capture.</p>
+            <p class="notice">When enabled, this app screenshots the window you are working in at your chosen interval, and pauses while this app is the front-most window. {{ storage_notice }} When you ask a question, your latest screenshot and the question are sent to Claude (Anthropic) to answer it. Start only on a device and screen you are authorized to capture.</p>
             <div class="consent">
                 <input id="consent" type="checkbox">
                 <label for="consent">I understand and want to start screenshot capture.</label>
@@ -520,7 +520,8 @@ PAGE_TEMPLATE = """
             const response = await fetch('/api/status');
             const data = await response.json();
             isActive = data.active;
-            statusText.textContent = `Screenshots taken: ${data.count}. Capture is ${data.active ? 'on' : 'off'}.`;
+            const state = !data.active ? 'off' : data.paused ? 'paused while Snaptcha is in front' : 'on';
+            statusText.textContent = `Screenshots taken: ${data.count}. Capture is ${state}.`;
             captureButton.textContent = data.active ? 'Stop capture' : 'Start capture';
             captureButton.disabled = busy || (!data.active && !consent.checked);
             intervalInput.disabled = data.active || busy;
@@ -661,6 +662,7 @@ class CaptureManager:
         self._count = 0
         self._captures = []
         self._interval_seconds = CAPTURE_INTERVAL_SECONDS
+        self._paused = False  # True while Snaptcha itself is the front-most window
         # Uploads run on their own thread so a slow upload never delays the next capture.
         self._uploads = queue.Queue(maxsize=100)
         threading.Thread(target=self._upload_loop, daemon=True, name="screenshot-upload").start()
@@ -670,6 +672,7 @@ class CaptureManager:
             alive = self._thread is not None and self._thread.is_alive()
             return {
                 "active": alive and not self._stop_event.is_set(),
+                "paused": alive and self._paused,
                 "count": self._count,
                 "error": self._error,
             }
@@ -714,8 +717,11 @@ class CaptureManager:
         next_tick = time.monotonic()
         while not self._stop_event.is_set():
             try:
-                # None only when there's no usable window to capture yet.
-                shot = capturer.capture()
+                # Pause while Snaptcha is in front; resume as soon as the user switches away.
+                paused = own_window_in_front()
+                with self._lock:
+                    self._paused = paused
+                shot = None if paused else capturer.capture()
             except Exception:
                 app.logger.exception("Screenshot capture failed")
                 with self._lock:

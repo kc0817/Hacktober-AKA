@@ -10,8 +10,6 @@ from PIL import Image
 
 from .config import CONFIG
 
-PW_RENDERFULLCONTENT = 2  # PrintWindow flag: render the window even if it's covered
-
 
 @dataclass
 class Screenshot:
@@ -36,37 +34,23 @@ def _window_info(hwnd):
     return win32gui.GetWindowText(hwnd), (left, top, right, bottom), pid
 
 
-def _print_window(hwnd, width, height) -> Image.Image | None:
-    """Render a window that is behind ours. Some GPU-drawn views come back black; that's best effort."""
+def own_window_in_front() -> bool:
+    """True when one of this app's own windows is the foreground window (Windows only)."""
+    if sys.platform != "win32":
+        return False
     import win32gui
-    import win32ui
+    import win32process
 
-    hwnd_dc = win32gui.GetWindowDC(hwnd)
-    src_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-    mem_dc = src_dc.CreateCompatibleDC()
-    bitmap = win32ui.CreateBitmap()
-    try:
-        bitmap.CreateCompatibleBitmap(src_dc, width, height)
-        mem_dc.SelectObject(bitmap)
-        import ctypes
-        if not ctypes.windll.user32.PrintWindow(hwnd, mem_dc.GetSafeHdc(), PW_RENDERFULLCONTENT):
-            return None
-        info = bitmap.GetInfo()
-        return Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]),
-                                bitmap.GetBitmapBits(True), "raw", "BGRX", 0, 1)
-    finally:
-        win32gui.DeleteObject(bitmap.GetHandle())
-        mem_dc.DeleteDC()
-        src_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd:
+        return False
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    return pid == os.getpid()
 
 
 class WindowCapturer:
-    def __init__(self):
-        self._last_other_hwnd = None  # last focused window that isn't ours
-
     def capture(self) -> Screenshot | None:
-        """Screenshot the window the user is working in. None only if there's no usable window."""
+        """Screenshot the focused window. None if it's this app's own window or there's no usable window."""
         captured_at = datetime.now(timezone.utc)
         if sys.platform != "win32":
             # Non-Windows dev fallback: primary monitor.
@@ -76,24 +60,13 @@ class WindowCapturer:
 
         import win32gui
 
-        hwnd = win32gui.GetForegroundWindow()
-        info = _window_info(hwnd)
-        if info and info[2] != os.getpid():
-            # Normal case: grab the focused window's pixels straight off the screen.
-            self._last_other_hwnd = hwnd
-            title, (left, top, right, bottom), _ = info
-            with mss.mss() as sct:
-                raw = sct.grab({"left": left, "top": top, "width": right - left, "height": bottom - top})
-            return self._encode(Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX"), title, captured_at)
-
-        # Our own window is focused (e.g. the user is typing a question): keep capturing the window
-        # they were working in, rendered directly since ours may be covering it.
-        info = _window_info(self._last_other_hwnd)
-        if not info:
+        info = _window_info(win32gui.GetForegroundWindow())
+        if not info or info[2] == os.getpid():
             return None
         title, (left, top, right, bottom), _ = info
-        img = _print_window(self._last_other_hwnd, right - left, bottom - top)
-        return self._encode(img, title, captured_at) if img else None
+        with mss.mss() as sct:
+            raw = sct.grab({"left": left, "top": top, "width": right - left, "height": bottom - top})
+        return self._encode(Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX"), title, captured_at)
 
     @staticmethod
     def _encode(img: Image.Image, title: str, captured_at: datetime) -> Screenshot:

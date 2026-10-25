@@ -93,8 +93,8 @@ session share, and first/last capture times.
 
 - Capture does not start on launch. Accept the notice and press **Start capture**
   to begin; press **Stop capture** to end it.
-- The focused window is captured at the chosen interval; while this app is focused it captures
-  the last window you used instead.
+- The focused window is captured at the chosen interval; capture pauses while the Snaptcha window
+  is in front and resumes when you switch away.
 - Screenshots are uploaded to Snowflake, or kept in memory only with `--local`.
 - When you ask a question, the latest `RECENT_IMAGE_COUNT` screenshot(s) (default 1) and the question are sent to Claude.
 - The capture interval is used only for the current run and is not saved.
