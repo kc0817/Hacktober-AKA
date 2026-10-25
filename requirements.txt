@@ -1,0 +1,7 @@
+anthropic>=1.0
+snowflake-connector-python>=3.12
+PySide6>=6.7
+mss>=9.0
+Pillow>=10.4
+python-dotenv>=1.0
+pywin32>=306; sys_platform == "win32"
