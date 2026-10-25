@@ -1,23 +1,22 @@
 # Image Archive
 
-A desktop app that captures the screen only after you sign in, accept the notice,
-and press **Sign in and start capture**.
-While it is running, it sends one full-screen JPEG to Snowflake every three
-seconds, with the capture time, foreground application, device name, and
-operating system.
+A desktop app that captures the full screen after you accept the notice and
+press **Start capture**, then captures again every three seconds. The UI shows
+the screenshot count and a session history with the capture time, active app,
+device, operating system, and image dimensions.
+The page also includes a Claude chat panel, but chat is currently a disabled UI
+placeholder; it does not call Claude or access screenshot images.
 
 ## Privacy and storage
 
-- The app opens to an empty Snowflake setup form. Capture does not start on launch.
-- You must sign in and accept the capture notice before starting.
-- At three-second intervals, the app can create about 1,200 Snowflake rows per
-  hour; Snowflake storage and usage charges may apply.
-- Screenshots are captured in memory, compressed as JPEG, and inserted directly
-  into a Snowflake `BINARY` column. The app does not write screenshot files to
-  your device.
-- Snowflake settings are held in memory only and cleared when the app closes.
-- Press **Stop capture** to end uploads. macOS may ask you to grant Screen
-  Recording permission the first time a screenshot is taken.
+- Capture does not start on launch. Accept the notice and press **Start capture**
+  to begin; press **Stop capture** to end it.
+- Image pixels are discarded after each capture. They are not saved to disk,
+  displayed, or uploaded. Capture metadata is kept in memory and shown in the
+  history; it is cleared when the app closes.
+- The active app is reported on macOS. Other platforms show `Unknown`.
+- macOS may ask you to grant Screen Recording permission the first time a
+  screenshot is taken.
 
 ## Run from source
 
@@ -44,18 +43,8 @@ python -m pip install -r requirements.txt
 python agent.py
 ```
 
-The window opens to the blank setup form. `python agent.py --browser` opens the
-same app in your default browser instead.
-
-## Snowflake setup
-
-Enter your Snowflake account identifier, username, and password in the app.
-Database and schema are optional under **Advanced settings**: leave both blank
-to use the defaults configured for your Snowflake user. The table defaults to
-`SCREENSHOTS`. The app creates it if it does not exist. The Snowflake role must
-be allowed to create the table and insert and select rows in it. If your user
-does not have default database and schema values, fill in both under Advanced
-settings.
+The window opens to the local screenshot archive. `python agent.py --browser`
+opens the same app in your default browser instead.
 
 ## Build a desktop app
 

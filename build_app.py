@@ -14,8 +14,6 @@ command = [
     "ImageArchive",
     "--collect-all",
     "webview",
-    "--collect-all",
-    "snowflake.connector",
 ]
 
 if sys.platform == "darwin":
