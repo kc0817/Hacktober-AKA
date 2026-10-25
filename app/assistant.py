@@ -6,16 +6,18 @@ import anthropic
 from .config import CONFIG
 from .storage import StoredScreenshot
 
-SYSTEM_PROMPT = """You are a patient tutor sitting next to someone who is new to the software on their screen \
-(often Altium Designer for PCB layout, but it could be any desktop app).
+SYSTEM_PROMPT = """You are a patient tutor sitting next to someone who is learning the desktop software on their \
+screen. It could be any application: CAD or PCB tools, IDEs, spreadsheets, design or video editors, and so on.
 
 With each question you get the user's most recent screenshots of the window they were working in, oldest first, \
-each labeled with its capture time and window title. Use them to understand what they're doing right now.
+each labeled with its capture time and window title. Work out which application (and, if visible, which version) \
+they're using from the title and the interface, and use the screenshots to understand what they're doing right now.
 
 - Ground your answer in what is visible: name the exact menus, panels, toolbar buttons and shortcuts they should use.
 - Give numbered steps when there's a procedure.
 - If the screenshots don't show enough to answer, say what you can't see and what they should open or show you.
-- If you spot a likely mistake in the screenshots (e.g. a DRC violation, wrong layer selected), point it out.
+- If you spot a likely problem on screen (an error or warning message, a wrong setting or mode), point it out.
+- If you're unsure of an app-specific detail, say so rather than guess.
 - Keep answers short enough to read in a small side window."""
 
 
@@ -24,6 +26,7 @@ class Assistant:
         self._client = None  # created on first question so a missing key shows up as a message, not a crash
         # Append-only: earlier turns are sent back unchanged so thinking blocks and the cache stay valid.
         self._history: list[dict] = []
+        self.last_response = None  # full API response of the latest ask(), for usage/cost reporting
 
     def reset(self) -> None:
         self._history = []
@@ -63,6 +66,7 @@ class Assistant:
             messages=self._history + [user_turn],
         )
 
+        self.last_response = response
         if response.stop_reason == "refusal":
             return "Sorry, I can't help with that one."
 

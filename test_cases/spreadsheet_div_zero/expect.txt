@@ -1,0 +1,1 @@
+C3 (Months) is 0 so =B3/C3 divides by zero; fix the 0 or wrap in IFERROR / IF(C3=0,...)
