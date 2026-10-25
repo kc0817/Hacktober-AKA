@@ -18,7 +18,7 @@ class Config:
     sf_stage: str = "SCREENSHOTS"
 
     capture_interval_sec: int = int(os.environ.get("CAPTURE_INTERVAL_SEC", "3"))
-    recent_image_count: int = int(os.environ.get("RECENT_IMAGE_COUNT", "3"))
+    recent_image_count: int = int(os.environ.get("RECENT_IMAGE_COUNT", "1"))
     # Cap on screenshots kept in the database (all users and sessions); the oldest are deleted first.
     max_screenshots: int = int(os.environ.get("MAX_SCREENSHOTS", "500"))
     cleanup_every_uploads: int = 10

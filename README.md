@@ -59,7 +59,7 @@ pyinstaller --noconsole --onefile --name ScreenCoach app/main.py
 - **Session scoping:** each launch gets a new `SESSION_ID`, and Claude only sees screenshots from that session.
 - **Privacy:** only the focused window is captured, never the coach window itself; there's a Pause button.
   Consider adding a window-title allowlist (e.g. only `Altium Designer`) before demoing.
-- **Cost:** each question sends 3 images (~1.5k tokens each) plus the chat history so far. "New chat" resets it.
+- **Cost:** each question sends `RECENT_IMAGE_COUNT` images (default 1, ~1.5k tokens each) plus the chat history so far. "New chat" resets it.
   Prompt caching is on, so earlier turns get cheaper on repeat.
 - **Storage cap:** the database keeps at most `MAX_SCREENSHOTS` (in `.env`, default 500) across all users;
   every 10 uploads the app deletes the oldest files and rows. Run `python -m scripts.cleanup [--max N] [--dry-run]`
@@ -88,9 +88,10 @@ agent.py (UI + Flask routes)
 
 - Capture does not start on launch. Accept the notice and press **Start capture**
   to begin; press **Stop capture** to end it.
-- Only the focused window is captured, never this app's own window; unchanged screens are skipped.
+- The focused window is captured every `CAPTURE_INTERVAL_SEC` seconds; while this app is focused it captures
+  the last window you used instead.
 - Screenshots are uploaded to Snowflake, or kept in memory only with `--local`.
-- When you ask a question, the latest screenshots and the question are sent to Claude.
+- When you ask a question, the latest `RECENT_IMAGE_COUNT` screenshot(s) (default 1) and the question are sent to Claude.
 - The active app is the window title on Windows; macOS reports the app name and
   may ask for Screen Recording permission the first time a screenshot is taken.
 

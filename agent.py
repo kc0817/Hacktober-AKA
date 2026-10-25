@@ -1,5 +1,6 @@
 import argparse
 import platform
+import queue
 import threading
 import time
 import uuid
@@ -85,7 +86,7 @@ PAGE_TEMPLATE = """
             <p>Local screenshot archive</p>
         </header>
         <main>
-            <p class="notice">When enabled, this app screenshots the window you are working in every {{ interval }} seconds (never this app's own window, and unchanged screens are skipped). {{ storage_notice }} When you ask a question, your most recent screenshots and the question are sent to Claude (Anthropic) to answer it. Start only on a device and screen you are authorized to capture.</p>
+            <p class="notice">When enabled, this app screenshots the window you are working in every {{ interval }} seconds (while this app is focused, it captures the last window you used instead). {{ storage_notice }} When you ask a question, your latest screenshot and the question are sent to Claude (Anthropic) to answer it. Start only on a device and screen you are authorized to capture.</p>
             <div class="consent">
                 <input id="consent" type="checkbox">
                 <label for="consent">I understand and want to start screenshot capture.</label>
@@ -114,7 +115,7 @@ PAGE_TEMPLATE = """
                 <section aria-labelledby="chatHeading">
                     <h2 id="chatHeading">Claude chat</h2>
                     <div id="chatMessages" class="chatMessages" role="log" aria-live="polite">
-                        <p class="empty">Ask about what you're doing. Claude sees your latest screenshots.</p>
+                        <p class="empty">Ask about what you're doing. Claude sees your latest screenshot.</p>
                     </div>
                     <form id="chatForm" class="chatForm" aria-label="Claude chat">
                         <input id="chatInput" type="text" aria-label="Message" placeholder="Ask a question…" autocomplete="off">
@@ -306,6 +307,9 @@ class CaptureManager:
         self._error = None
         self._count = 0
         self._captures = []
+        # Uploads run on their own thread so a slow upload never delays the next capture.
+        self._uploads = queue.Queue(maxsize=100)
+        threading.Thread(target=self._upload_loop, daemon=True, name="screenshot-upload").start()
 
     def status(self):
         with self._lock:
@@ -345,24 +349,29 @@ class CaptureManager:
 
     def _capture_loop(self):
         capturer = WindowCapturer()
-        try:
-            while not self._stop_event.is_set():
-                started = time.monotonic()
-                # None when this app is focused or the screen hasn't changed.
+        next_tick = time.monotonic()
+        while not self._stop_event.is_set():
+            try:
+                # None only when there's no usable window to capture yet.
                 shot = capturer.capture()
-                if shot is not None:
-                    self._save(shot)
-                self._stop_event.wait(
-                    max(0, CAPTURE_INTERVAL_SECONDS - (time.monotonic() - started))
-                )
-        except Exception:
-            app.logger.exception("Screenshot capture failed")
-            with self._lock:
-                self._error = (
-                "Capture stopped because a screenshot or its metadata could "
-                "not be collected. Check Screen Recording permission and the app log."
-                )
-            self._stop_event.set()
+            except Exception:
+                app.logger.exception("Screenshot capture failed")
+                with self._lock:
+                    self._error = "A screenshot could not be taken. Capture is still running; check the app log."
+                shot = None
+            if shot is not None:
+                try:
+                    self._uploads.put_nowait(shot)
+                except queue.Full:
+                    with self._lock:
+                        self._error = "Uploads are falling behind; some screenshots were skipped."
+            # Fixed schedule: one capture every CAPTURE_INTERVAL_SECONDS regardless of how long this tick took.
+            next_tick += CAPTURE_INTERVAL_SECONDS
+            self._stop_event.wait(max(0, next_tick - time.monotonic()))
+
+    def _upload_loop(self):
+        while True:
+            self._save(self._uploads.get())
 
     def _save(self, shot):
         # An upload failure (e.g. a network blip) shouldn't stop capture; report it and keep going.
