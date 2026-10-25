@@ -69,11 +69,11 @@ pyinstaller --noconsole --onefile --name ScreenCoach app/main.py
 - **Next steps:** stream the answer into the window token-by-token; a global hotkey to focus the box;
   let Claude ask for an older screenshot via a tool; use Snowflake Cortex to search past sessions.
 
-## Image Archive (`agent.py`)
+## Snaptcha © (`agent.py`)
 
 The main app: Ash's web-style window (Flask + pywebview) wired to Screen Coach's pipeline.
-After you accept the notice and press **Start capture**, it screenshots the focused window every
-`CAPTURE_INTERVAL_SEC` seconds (from `.env`) using `app/capture.py`, uploads each one with
+After you accept the notice and press **Start capture**, it screenshots the focused window at the
+chosen interval using `app/capture.py`, uploads each one with
 `app/storage.py`, and lists it in the session history. The Claude chat panel sends your question plus
 the latest screenshots through `app/assistant.py`. `app/main.py` is the older PySide6 window with the
 same pipeline.
@@ -84,14 +84,20 @@ agent.py (UI + Flask routes)
   └─ POST /api/ask ─► storage.recent() ─► app/assistant.py ─► Claude
 ```
 
+Choose a capture interval from 1 to 3,600 seconds before starting (default: `CAPTURE_INTERVAL_SEC`, 3).
+The history table sorts by any column. The app-frequency chart and activity summary are calculated from
+capture metadata only; hovering over or keyboard-focusing a chart point shows that app's capture count,
+session share, and first/last capture times.
+
 ### Privacy and storage
 
 - Capture does not start on launch. Accept the notice and press **Start capture**
   to begin; press **Stop capture** to end it.
-- The focused window is captured every `CAPTURE_INTERVAL_SEC` seconds; while this app is focused it captures
+- The focused window is captured at the chosen interval; while this app is focused it captures
   the last window you used instead.
 - Screenshots are uploaded to Snowflake, or kept in memory only with `--local`.
 - When you ask a question, the latest `RECENT_IMAGE_COUNT` screenshot(s) (default 1) and the question are sent to Claude.
+- The capture interval is used only for the current run and is not saved.
 - The active app is the window title on Windows; macOS reports the app name and
   may ask for Screen Recording permission the first time a screenshot is taken.
 
