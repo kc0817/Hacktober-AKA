@@ -1,2 +1,2 @@
-if __name__ == "___main__":
+if __name__ == "______main__":
     print("hi")
