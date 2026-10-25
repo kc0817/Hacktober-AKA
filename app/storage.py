@@ -84,6 +84,36 @@ class SnowflakeStore:
                 (self.session_id, question, answer, json.dumps(screenshot_ids)),
             )
 
+    def cleanup(self, max_keep: int, dry_run: bool = False) -> int:
+        """Delete all but the newest max_keep screenshots (files and rows). Returns how many were deleted."""
+        max_keep = max(max_keep, CONFIG.recent_image_count)  # never delete what the next question needs
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT ID, STAGE_PATH FROM SCREENSHOT_LOG "
+                "QUALIFY ROW_NUMBER() OVER (ORDER BY CAPTURED_AT DESC) > %s",
+                (max_keep,),
+            )
+            old = cur.fetchall()
+            if dry_run or not old:
+                return len(old)
+
+            # Remove each file first, and only drop rows whose file is gone, so a failure leaves
+            # nothing orphaned and the next cleanup retries it.
+            removed_ids = []
+            for row_id, stage_path in old:
+                try:
+                    cur.execute(f"REMOVE @{CONFIG.sf_stage}/{stage_path}")
+                    removed_ids.append(row_id)
+                except Exception:
+                    continue
+            for i in range(0, len(removed_ids), 500):
+                batch = removed_ids[i:i + 500]
+                cur.execute(
+                    f"DELETE FROM SCREENSHOT_LOG WHERE ID IN ({', '.join(['%s'] * len(batch))})",
+                    batch,
+                )
+            return len(removed_ids)
+
     def close(self) -> None:
         self._conn.close()
 
@@ -91,16 +121,22 @@ class SnowflakeStore:
 class LocalStore:
     """In-memory stand-in for SnowflakeStore (`--local`), for trying the app without Snowflake."""
 
-    def __init__(self, session_id: str, keep: int = 50):
+    def __init__(self, session_id: str):
         self.session_id = session_id
         self._lock = threading.Lock()
         self._shots: list[StoredScreenshot] = []
-        self._keep = keep
 
     def upload(self, shot: Screenshot) -> None:
         with self._lock:
             self._shots.append(StoredScreenshot(uuid.uuid4().hex, shot.captured_at, shot.window_title, shot.png_bytes))
-            del self._shots[:-self._keep]
+
+    def cleanup(self, max_keep: int, dry_run: bool = False) -> int:
+        max_keep = max(max_keep, CONFIG.recent_image_count)
+        with self._lock:
+            extra = max(0, len(self._shots) - max_keep)
+            if not dry_run:
+                del self._shots[:extra]
+            return extra
 
     def recent(self, n: int) -> list[StoredScreenshot]:
         with self._lock:

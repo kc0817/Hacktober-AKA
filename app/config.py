@@ -19,6 +19,9 @@ class Config:
 
     capture_interval_sec: int = int(os.environ.get("CAPTURE_INTERVAL_SEC", "15"))
     recent_image_count: int = int(os.environ.get("RECENT_IMAGE_COUNT", "3"))
+    # Cap on screenshots kept in the database (all users and sessions); the oldest are deleted first.
+    max_screenshots: int = int(os.environ.get("MAX_SCREENSHOTS", "500"))
+    cleanup_every_uploads: int = 10
     # Claude downsizes anything bigger than this anyway, so don't store/upload more.
     max_image_edge: int = 1568
 

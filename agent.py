@@ -388,6 +388,12 @@ class CaptureManager:
                     "height": shot.height,
                 }
             )
+            count = self._count
+        if count % CONFIG.cleanup_every_uploads == 0:
+            try:
+                store.cleanup(CONFIG.max_screenshots)
+            except Exception:
+                app.logger.exception("Screenshot cleanup failed")
 
 
 capture_manager = CaptureManager()

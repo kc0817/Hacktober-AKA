@@ -61,6 +61,9 @@ pyinstaller --noconsole --onefile --name ScreenCoach app/main.py
   Consider adding a window-title allowlist (e.g. only `Altium Designer`) before demoing.
 - **Cost:** each question sends 3 images (~1.5k tokens each) plus the chat history so far. "New chat" resets it.
   Prompt caching is on, so earlier turns get cheaper on repeat.
+- **Storage cap:** the database keeps at most `MAX_SCREENSHOTS` (in `.env`, default 500) across all users;
+  every 10 uploads the app deletes the oldest files and rows. Run `python -m scripts.cleanup [--max N] [--dry-run]`
+  to trim by hand.
 - **Refusals:** server-side fallback (`fallbacks: "default"`) is enabled, so if a safety classifier declines a
   request it's retried on Anthropic's recommended fallback model.
 - **Next steps:** stream the answer into the window token-by-token; a global hotkey to focus the box;
