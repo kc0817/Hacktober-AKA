@@ -68,25 +68,28 @@ pyinstaller --noconsole --onefile --name ScreenCoach app/main.py
 
 ## Image Archive (`agent.py`)
 
-A second app from the `App` branch, kept side by side with `app/` until they're integrated.
+The main app: Ash's web-style window (Flask + pywebview) wired to Screen Coach's pipeline.
+After you accept the notice and press **Start capture**, it screenshots the focused window every
+`CAPTURE_INTERVAL_SEC` seconds (from `.env`) using `app/capture.py`, uploads each one with
+`app/storage.py`, and lists it in the session history. The Claude chat panel sends your question plus
+the latest screenshots through `app/assistant.py`. `app/main.py` is the older PySide6 window with the
+same pipeline.
 
-A desktop app that captures the full screen after you accept the notice and
-press **Start capture**, then captures again every three seconds. The UI shows
-the screenshot count and a session history with the capture time, active app,
-device, operating system, and image dimensions.
-The page also includes a Claude chat panel, but chat is currently a disabled UI
-placeholder; it does not call Claude or access screenshot images.
+```
+agent.py (UI + Flask routes)
+  ├─ capture loop ─► app/capture.py ─► app/storage.py ─► Snowflake (or memory with --local)
+  └─ POST /api/ask ─► storage.recent() ─► app/assistant.py ─► Claude
+```
 
 ### Privacy and storage
 
 - Capture does not start on launch. Accept the notice and press **Start capture**
   to begin; press **Stop capture** to end it.
-- Image pixels are discarded after each capture. They are not saved to disk,
-  displayed, or uploaded. Capture metadata is kept in memory and shown in the
-  history; it is cleared when the app closes.
-- The active app is reported on macOS. Other platforms show `Unknown`.
-- macOS may ask you to grant Screen Recording permission the first time a
-  screenshot is taken.
+- Only the focused window is captured, never this app's own window; unchanged screens are skipped.
+- Screenshots are uploaded to Snowflake, or kept in memory only with `--local`.
+- When you ask a question, the latest screenshots and the question are sent to Claude.
+- The active app is the window title on Windows; macOS reports the app name and
+  may ask for Screen Recording permission the first time a screenshot is taken.
 
 ### Run from source
 
@@ -110,11 +113,12 @@ Install dependencies and launch:
 
 ```text
 python -m pip install -r requirements.txt
-python agent.py
+python agent.py            # uploads to Snowflake (needs SNOWFLAKE_* in .env)
+python agent.py --local    # no Snowflake; screenshots stay in memory
 ```
 
-The window opens to the local screenshot archive. `python agent.py --browser`
-opens the same app in your default browser instead.
+`--browser` opens the same app in your default browser instead of a desktop window.
+From WSL, use the Windows Python: `wpy agent.py --local`.
 
 ### Build a desktop app
 
